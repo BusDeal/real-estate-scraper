@@ -5,6 +5,7 @@ import os
 import time
 from bs4 import BeautifulSoup
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -39,21 +40,24 @@ class BaseScraper(ABC):
             A headless Chrome driver instance.
         """
         options = webdriver.ChromeOptions()
-        # options.add_argument('--headless')
+        if config.FLASK_ENV == 'development':
+            options.add_argument('--headless')
+            
         options.add_argument('--disable-gpu')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-extensions')
         options.add_argument("start-maximized")
         options.add_experimental_option('excludeSwitches', ['enable-automation'])
-        # options.binary_location = config.WEB_DRIVER_PATH
+
         # this will disable image loading
         # options.add_argument('--blink-settings=imagesEnabled=false')
         # or alternatively we can set direct preference:
         # options.add_experimental_option(
         #     "prefs", {"profile.managed_default_content_settings.images": 2}
         # )
-        driver = webdriver.Chrome(options=options)
+        chrome_service = Service(executable_path=config.WEB_DRIVER_PATH)
+        driver = webdriver.Chrome(service=chrome_service, options=options)
         return driver
     @staticmethod
     def firefox_driver():

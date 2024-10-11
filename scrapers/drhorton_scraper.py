@@ -269,10 +269,10 @@ class DRHortonScraper(BaseScraper):
             logger.info(f"Total Communities: {len(communities)}")
 
             # Scrape details for each community
-            # enriched_communities: list[dict] = self.scrape_details_parallel(communities, 3)
+            enriched_communities: list[dict] = self.scrape_details_parallel(communities, config.SCRAPER_DEFAULT_CONCURRENCY)
             # Save to file
-            # if len(enriched_communities) > 0:
-            #     self.save_to_file(enriched_communities, 'data/dr_horton_scraped_communities.json')
+            if len(enriched_communities) > 0:
+                self.save_to_file(enriched_communities, config.SCRAPER_OUTPUT_DIR + 'dr_horton_scraped_communities.json')
 
         except Exception as e:
             logger.exception(f"Error scraping: {e}")

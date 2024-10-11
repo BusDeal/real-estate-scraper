@@ -101,8 +101,8 @@ class LennarScraper(BaseScraper):
         self.close_driver()
 
         # Step 4: Scrape the details for each community
-        enriched_communities = self.scrape_details_parallel(communities, 2)
-        self.save_to_file(enriched_communities, 'lennar_scraped_communities.json')
+        enriched_communities = self.scrape_details_parallel(communities, config.SCRAPER_DEFAULT_CONCURRENCY)
+        self.save_to_file(enriched_communities, config.SCRAPER_OUTPUT_DIR +'lennar_scraped_communities.json')
         return communities
     def _click_communities_button(self):
         # Locate the Communities button by text or other attributes and click it 
