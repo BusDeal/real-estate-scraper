@@ -1,54 +1,59 @@
-import json
+import requests
 from core.base_scraper import BaseScraper
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from config.constants import LENNAR_AMENITIES_CONTAINER_CLASS, LENNAR_AMENITIES_NAME_LABEL_CLASS, LENNAR_AMENITIES_ROOT_DIV_CLASS, LENNAR_BASE_URL, LENNAR_COMMUNITY_AMENITIES_LINK_CLASS, LENNAR_COMMUNITY_CARD_BADGE_CLASS, LENNAR_COMMUNITY_CARD_CLASS, LENNAR_COMMUNITY_CARD_LINK_CLASS, LENNAR_COMMUNITY_CARD_OVERVIEW_CLASS, LENNAR_COMMUNITY_CARD_PRICE_ADDRESS_CLASS, LENNAR_COMMUNITY_CARD_STATUS_CLASS, LENNAR_COMMUNITY_CARD_TITLE_CLASS, LENNAR_COMMUNITY_NEARBY_PLACES_LINK_CLASS, LENNAR_CONTACT_LINK_SELECTOR, LENNAR_HOME_DETAILS_WRAPPER_CLASS, LENNAR_HOME_ITEM_CLASS, LENNAR_HOME_LISTING_CONTAINER_CLASS, LENNAR_HOME_NEARBY_SCHOOLS_CLASS, LENNAR_HOME_PRICE_SIDEBAR_ID, LENNAR_HOME_SITE_ID, LENNAR_HOMESITE_ID_CLASS, LENNAR_LINK_ELEMENT_SELECTOR, LENNAR_POIS_CONTAINER_CLASS, LENNAR_SEARCH_BOX_ID, LENNAR_SEARCH_RESULT_TARGET_LINK_SELECTOR, LENNAR_SEARCH_URL
+from config.constants import LENNAR_AMENITIES_CONTAINER_CLASS, LENNAR_AMENITIES_NAME_LABEL_CLASS, LENNAR_AMENITIES_ROOT_DIV_CLASS, LENNAR_BASE_URL, LENNAR_COMMUNITY_AMENITIES_LINK_CLASS, LENNAR_COMMUNITY_CARD_BADGE_CLASS, LENNAR_COMMUNITY_CARD_CLASS, LENNAR_COMMUNITY_CARD_LINK_CLASS, LENNAR_COMMUNITY_CARD_OVERVIEW_CLASS, LENNAR_COMMUNITY_CARD_PRICE_ADDRESS_CLASS, LENNAR_COMMUNITY_CARD_STATUS_CLASS, LENNAR_COMMUNITY_CARD_TITLE_CLASS, LENNAR_COMMUNITY_NEARBY_PLACES_LINK_CLASS, LENNAR_CONTACT_LINK_SELECTOR, LENNAR_GRAPHQL_API_URL, LENNAR_HOME_DETAILS_WRAPPER_CLASS, LENNAR_HOME_ITEM_CLASS, LENNAR_HOME_LISTING_CONTAINER_CLASS, LENNAR_HOME_NEARBY_SCHOOLS_CLASS, LENNAR_HOME_PRICE_SIDEBAR_ID, LENNAR_HOME_SITE_ID, LENNAR_HOMESITE_ID_CLASS, LENNAR_LINK_ELEMENT_SELECTOR, LENNAR_POIS_CONTAINER_CLASS, LENNAR_SEARCH_BOX_ID, LENNAR_SEARCH_RESULT_TARGET_LINK_SELECTOR, LENNAR_SEARCH_URL
 from config.settings import config
 from utils.helpers import timeit
 from utils.logger import Logger
 import time
 
 logger = Logger(config.LOG_TO_FILE, config.LOG_FILE_NAME).get_logger()
+
 class LennarScraper(BaseScraper):
     def extract_community_data(self) -> list:
         return self.scrape()
 
+    def _get_search_payload(self, search_term: str) -> dict:
+        return {
+            "operationName": "SearchQueryNew",
+            "variables": {
+                "input": search_term,
+                "first": 3,
+                "marketCode": "AUS"
+            },
+            "query": """query SearchQueryNew($input: String, $first: Int, $type: String, $marketCode: String) {
+                search(input: $input, first: $first, marketCode: $marketCode, type: $type) {
+                    type
+                    results {
+                        name
+                        subtext
+                        url
+                    }
+                    totalResults
+                }
+            }"""
+        }
+    
     def get_search_url(self, search_term: str) -> str:
-        self.load_page_with_wait(LENNAR_BASE_URL)
-        self.remove_privacy_notice_popup()
+        headers = get_request_headers()
+        payload = self._get_search_payload(search_term)
         try:
-            time.sleep(1)
-            search_btn = self.driver.find_element(By.ID, LENNAR_SEARCH_BOX_ID)
-            # print(search_btn)
-            self.driver.execute_script("""
-                var box = document.getElementById('search-field');
-                console.log(box);
-                console.log(arguments[0]);
-                if(box) {box.focus(); box.value = arguments[0];}
-                document.querySelector('ul.SearchResultSection_resultList__GwF5_ a')[0].click(); 
-                """, search_term)
-            
-            # search_btn.send_keys(search_term)
-            # search_box = self.driver.find_element(By.ID, LENNAR_SEARCH_BOX_ID)
-            # print("search_box -> ", search_box)
-            # focus the search box
-            # ActionChains(self.driver).move_to_element(search_box).perform()
-            # search_box.clear()
-            # search_box.send_keys(search_term)
-            # self.driver.execute_script("arguments[0].click();", search_btn)
-            # wait for autocomplete widget to load
-            time.sleep(2)
-            try:
-                search_result_link = self.driver.find_element(By.CSS_SELECTOR, LENNAR_SEARCH_RESULT_TARGET_LINK_SELECTOR)
-                search_result_link.click()
-                time.sleep(2)
-            except Exception as e:
-                print("unable to locate search result", repr(e))
+           response = requests.post(LENNAR_GRAPHQL_API_URL, headers=headers, json=payload)
+           response.raise_for_status()
+           data = response.json().get('data').get('search')
+           if len(data) == 0:
+               raise Exception("unable to find any results for search")
+           results = list(filter(lambda x: x['type'] == 'CITY', data))
+           if len(results) == 0:
+               raise Exception("unable to find any results for search")
+           cities = results[0]
+           return LENNAR_BASE_URL + cities["results"][0]["url"]
+
         except Exception as e:
-            print("unable to locate search box", repr(e))
-        # get the page url
-        return self.driver.current_url
+            print("error in getting the search results", repr(e))
+        return ""
     
     def remove_privacy_notice_popup(self, driver = None):
         try:
@@ -80,9 +85,19 @@ class LennarScraper(BaseScraper):
         self.remove_privacy_notice_popup(driver)
 
     def scrape(self, search:str = "raleigh"):
+        communities = []
         self.driver.maximize_window()
-        search_url = self.get_search_url(search)
-        self.load_page_with_wait(search_url)
+        try:
+            search_url = self.get_search_url(search)
+            # print("search url: ", search_url)
+            if len(search_url) == 0:
+                logger.error("unable to find any results for search")
+                return communities
+            self.load_page_with_wait(search_url)
+        except Exception as e:
+            logger.exception("error in getting the search results", repr(e))
+            return communities
+        
         # remove popup
         self.remove_privacy_notice_popup()
         # Step 2: Click the "Communities" button
@@ -96,11 +111,14 @@ class LennarScraper(BaseScraper):
         # Step 3: Scrape the community list
         soup = self.get_beautiful_soup(self.driver.page_source)
         communities = self.scrape_community_list(soup)
-        print("communities found: ", len(communities))
+        logger.info(f"communities found: {len(communities)}")
         # print(json.dumps(communities, indent=4))
         self.close_driver()
-
+        if len(communities) == 0:
+            logger.error("unable to find any communities")
+            return communities
         # Step 4: Scrape the details for each community
+        communities = communities[:4]
         enriched_communities = self.scrape_details_parallel(communities, config.SCRAPER_DEFAULT_CONCURRENCY)
         self.save_to_file(enriched_communities, config.SCRAPER_OUTPUT_DIR +'lennar_scraped_communities.json')
         return communities
@@ -205,7 +223,7 @@ class LennarScraper(BaseScraper):
     @timeit
     def scrape_community_page_data(self, url: str) -> dict:
         print("scraping community page data from ", url)
-        scraper = LennarScraper(url)
+        scraper = LennarScraper()
         scraper.load_page_with_wait(url)
         # self.wait_for_element(By.CSS_SELECTOR, 'a.HomesitesTableNew_rowButton__EDamq')
         # self.wait_for_element(By.CLASS_NAME, 'MessageBarV2_backgroundAnimatedContainer__n4Xt4')
@@ -260,7 +278,7 @@ class LennarScraper(BaseScraper):
     @timeit
     def scrape_home_details(self, details_url: str) -> dict:
         print("scraping home details from ", details_url)
-        scraper = LennarScraper(details_url)
+        scraper = LennarScraper()
         scraper.load_page_with_wait(details_url)
         scraper.page_clean_up()
         # Initialize BeautifulSoup object
@@ -390,7 +408,7 @@ class LennarScraper(BaseScraper):
         Extracts the amenities from the Lennar community page
         '''
         try:
-            # scraper = LennarScraper(url)
+            # scraper = LennarScraper()
             self.load_page_with_wait(url,3)
             # self.wait_for_element(By.CLASS_NAME, 'AmenitiesModalContent_root__AUXpm')
             soup = self.get_beautiful_soup(self.driver.page_source)
@@ -414,9 +432,8 @@ class LennarScraper(BaseScraper):
             return []
 
     @timeit    
-    def scrape_details_parallel(self, communities, max_workers=5):
+    def scrape_details_parallel(self, communities, max_workers=4):
         enriched_communities = []
-        communities = communities[:3]
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_community = {
                 executor.submit(self.scrape_community_page_data, community['details_link']): community
@@ -438,3 +455,19 @@ class LennarScraper(BaseScraper):
         
         return enriched_communities
 
+def get_request_headers():
+    return {
+        'accept': '*/*',
+        'accept-language': 'en-US,en;q=0.9,hi;q=0.8',
+        'authorization': '',
+        'content-type': 'application/json',
+        'origin': LENNAR_BASE_URL,
+        'priority': 'u=1, i',
+        'referer': LENNAR_BASE_URL,
+        'sec-ch-ua': '"Google Chrome";v="129", "Chromium";v="129"',
+        'sec-ch-ua-platform': '"macOS"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-origin',
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+    }
