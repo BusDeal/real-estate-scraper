@@ -20,18 +20,19 @@ class DRHortonScraper(BaseScraper):
             search_box.clear()
             search_box.send_keys(search_term)
             # wait for autocomplete widget to load
-            time.sleep(2)
+            time.sleep(1)
             try:
                 search_result_link = self.driver.find_element(By.ID, DRHORTON_SEARCH_RESULT_TARGET_ID)
                 search_result_link.click()
-                time.sleep(2)
+                time.sleep(1)
+                return self.driver.current_url
             except Exception as e:
                 # print("unable to locate search result", repr(e))
                 logger.exception("unable to locate search result", repr(e))
         except Exception as e:
             logger.exception("unable to locate search box", repr(e))
         # get the page url
-        return self.driver.current_url
+        return ""
      
     def extract_community_data(self, url: str) -> list[dict]:
         self.driver.get(url)
@@ -252,7 +253,7 @@ class DRHortonScraper(BaseScraper):
         return nearby_communities
     
     @timeit
-    def scrape(self, search_term: str="raleigh") -> list[dict]:
+    def scrape(self, search: str="raleigh") -> list[dict]:
         """
         Scrapes community pages and extracts all the required data.
 
@@ -262,12 +263,18 @@ class DRHortonScraper(BaseScraper):
         try:
             self.driver.maximize_window()
             # Scrape all community pages
-            search_result_url = self.get_search_url(search_term)
-            logger.info(f"scraping: {search_result_url}")
-
+            try:
+                search_result_url = self.get_search_url(search)
+                logger.info(f"scraping: {search_result_url}")
+            except Exception as e:
+                logger.error(f"unable to find the search url for {search}")
+                return []
+            
             communities: list[dict] = self.scrape_community_pages(search_result_url)
             logger.info(f"Total Communities: {len(communities)}")
-
+            if len(communities) == 0:
+                return []
+            
             # Scrape details for each community
             enriched_communities: list[dict] = self.scrape_details_parallel(communities, config.SCRAPER_DEFAULT_CONCURRENCY)
             # Save to file
@@ -360,7 +367,7 @@ class DRHortonScraper(BaseScraper):
     def scrape_details_parallel(
         self,
         communities: list[dict],  # List of dictionaries with community info
-        max_workers: int = 5  # Number of threads to use
+        max_workers: int = 4  # Number of threads to use
     ) -> list[dict]:  # List of dictionaries with enriched community info
 
         """
@@ -368,13 +375,13 @@ class DRHortonScraper(BaseScraper):
 
         Args:
         - communities (list[dict]): List of dictionaries with community info
-        - max_workers (int): Number of threads to use (default: 5)
+        - max_workers (int): Number of threads to use (default: 4)
 
         Returns:
         - list[dict]: List of dictionaries with enriched community info
         """
         enriched_communities = []
-        communities = communities[:6]
+
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_community = {
                 executor.submit(self.extract_details_page_data, community['details_link']): community
