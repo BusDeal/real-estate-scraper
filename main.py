@@ -23,10 +23,11 @@ def scrape_lennar():
         # json.dump(data, open('communities.json', 'w'))
     except Exception as e:
         print(repr(e))
+    finally:
+        scraper.close_driver()
 
 if __name__ == "__main__":
     # take vendor from command line argument 
-    vendor = "lennar"
     vendor = sys.argv[1]
     match vendor:
         case "lennar":
