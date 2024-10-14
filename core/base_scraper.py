@@ -40,8 +40,8 @@ class BaseScraper(ABC):
             A headless Chrome driver instance.
         """
         options = webdriver.ChromeOptions()
-        if config.FLASK_ENV == 'development':
-            options.add_argument('--headless')
+        if config.FLASK_ENV == 'production' or config.WEB_DRIVER_HEADLESS:
+            options.add_argument("--headless")
             
         options.add_argument('--disable-gpu')
         options.add_argument('--no-sandbox')
@@ -62,7 +62,8 @@ class BaseScraper(ABC):
     @staticmethod
     def firefox_driver():
         options = webdriver.FirefoxOptions()
-        options.add_argument('--headless')
+        if config.FLASK_ENV == 'production' or config.WEB_DRIVER_HEADLESS:
+            options.add_argument("--headless")
         driver = webdriver.Firefox(options=options)
         return driver
 
