@@ -29,6 +29,7 @@ DRHORTON_COMMUNITY_NEARBY_COMMUNITIES_ID = 'nearbys'
 DRHORTON_COMMUNITY_PRIVACY_NOTICE_ID = 'onetrust-banner-sdk'
 DRHORTON_COMMUNITY_PAGINATION_BUTTON_CLASS = 'pagination__button'
 
+LENNAR_GRAPHQL_API_URL = "https://www.lennar.com/api/graphql"
 LENNAR_SEARCH_BOX_ID = "search-field"
 LENNAR_SEARCH_RESULT_TARGET_LINK_SELECTOR = "ul.SearchResultSection_resultList__GwF5_ a"
 LENNAR_PRIVACY_NOTICE_MODEL_ID = 'onetrust-consent-sdk'
