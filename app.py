@@ -12,5 +12,4 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    print(config.FLASK_DEBUG)
     app.run(debug=config.FLASK_DEBUG)
